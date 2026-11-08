@@ -1,81 +1,92 @@
-# SymPy – Hadamard Product Fixes
+# SymPy – Hadamard Product Derivative Fix
 
 **Team Nanosoft | Mach Zero Hackathon**
 
 ## About
 
-[SymPy](https://github.com/sympy/sympy) is an open-source Python library for symbolic mathematics. It supports algebra, calculus, equations, and matrix operations.
+[SymPy](https://github.com/sympy/sympy) is an open-source Python library for symbolic mathematics. It supports algebra, calculus, equations and matrix operations.
 
-Our contribution focuses on two issues involving **Hadamard products** in SymPy's matrix and array expression system.
+Our contribution addresses **Item 15 of [SymPy issue #30902](https://github.com/sympy/sympy/issues/30902)**, which involves an error when differentiating Hadamard products.
 
-A Hadamard product is simply element-wise matrix multiplication, where corresponding elements of two matrices are multiplied instead of using the usual row-by-column multiplication.
+A Hadamard product is element-wise matrix multiplication, where corresponding elements of two matrices are multiplied instead of using the usual row-by-column multiplication.
 
-## Fix 1: Incorrect Hadamard Product Orientation
+## The Problem
 
-**File:** `from_array_to_matrix.py`
+**File:** `sympy/tensor/array/expressions/arrayexpr_derivatives.py`
 
-### Problem
-When converting array expressions back into matrix expressions, SymPy could sometimes determine the wrong orientation of matrix factors.
+SymPy had a specialised derivative handler for `HadamardProduct` that simply raised `NotImplementedError`.
 
-This happened because contraction and diagonal indices could become indistinguishable during sorting, causing incorrect ordering.
+However, SymPy also had a general derivative handler for `MatrixExpr` that could already handle Hadamard products by converting them into array expressions.
 
-### Solution
-Updated the orientation check to distinguish between the two types of indices before sorting. This prevents index collisions and helps preserve the correct matrix orientation.
+Since SymPy's dispatch system always selects the most specific matching handler, it chose the specialised handler and never reached the general one.
 
-### Tests added
-- Hadamard product round-trip conversions.
-- Transposed factors and longer product chains.
-- Non-square matrices, vectors, and traces.
-- A derivative test involving Hadamard products.
+As a result, certain differentiation operations involving Hadamard products failed.
 
-## Fix 2: Hadamard Product Derivative Error
+## The Fix
 
-**Related issue:** #30902, Item 15
+Instead of creating another differentiation implementation, we removed the unnecessary specialised handler and its unused `HadamardProduct` import.
 
-### Problem
-SymPy had a special derivative handler for Hadamard products that only raised `NotImplementedError`. This prevented the general `MatrixExpr` derivative handler, which could already handle the operation, from being used.
+This allows SymPy to use its existing general `MatrixExpr` handler, which converts the expression into an array and performs the differentiation.
 
-### Solution
-Removed the unnecessary special handler and its unused import. SymPy can now use the existing general handler instead of stopping with an error.
+This avoids duplicating existing logic and makes use of functionality that was already available.
 
-### Tests added
-- Direct differentiation of Hadamard products.
-- Nested products and repeated matrix factors.
-- Hadamard products inside determinants, inverses, and matrix powers.
-- Non-square matrices, vectors, and symbolic dimensions.
-- Comparison against entry-by-entry differentiation.
+## Tests Added
+
+The regression tests cover the following cases:
+
+**1. Dispatch behaviour**
+- Checks that Hadamard products use the general `MatrixExpr` derivative handler.
+- Verifies the derivative result and expected shape `(3, 3, 3, 3)`.
+
+**2. Numerical differentiation**
+- Compares SymPy's result against an independent entry-by-entry differentiation method using `derive_by_array`.
+- Covers repeated factors, nested Hadamard products, transposes, traces and matrix expressions.
+
+**3. Nested matrix operations**
+- Tests Hadamard products inside determinants, inverses and matrix powers.
+- Includes both positive and negative integer powers.
+
+**4. Edge cases**
+- Variables that do not appear in the expression (expected zero derivative).
+- Non-square matrices (2×3).
+- Row and column vectors.
+- 1×1 matrices.
+- Symbolic matrix dimensions.
+- Expressions that cannot be converted by the general handler, ensuring they still raise `NotImplementedError` instead of causing an endless loop.
+
+**5. Matrix function differentiation**
+
+Additional tests check differentiation of determinants, inverses, matrix powers and traces involving Hadamard products.
 
 ## Running the Tests
 
 Run these commands from the SymPy repository root.
 
-**Fix 1:**
-```bash
-pytest sympy/tensor/array/expressions/tests/test_convert_array_to_matrix.py -k orientation_roundtrip
-pytest sympy/tensor/array/expressions/tests/test_arrayexpr_derivatives.py -k trace_hadamard
-```
+**Array derivative tests:**
 
-**Fix 2:**
 ```bash
 pytest -q sympy/tensor/array/expressions/tests/test_arrayexpr_derivatives.py -k hadamard
+```
+
+**Matrix derivative tests:**
+
+```bash
 pytest -q sympy/matrices/expressions/tests/test_derivatives.py -k hadamard
 ```
 
-## Testing
+## Testing Results
 
 The development testing recorded:
-- New regression tests failing before the derivative fix and passing afterwards.
-- Symbolic results matching entry-by-entry differentiation.
-- 1,092 existing tensor and matrix tests passing.
-- Style and documentation checks passing.
+
+- The original implementation reproduced the `NotImplementedError`.
+- Four focused regression tests failed before the fix and passed afterwards.
+- Symbolic differentiation results matched the independent entry-by-entry reference calculations.
+- Edge cases, including non-square matrices and symbolic dimensions, were tested.
+- 1,092 existing tests across the tensor and matrix code passed.
+- Style and documentation checks passed.
 
 ## Scope
 
-These are two separate fixes addressing different problems in SymPy:
+This contribution addresses **Item 15 of issue #30902**. It does not claim to resolve all 35 defects listed in the issue.
 
-1. Correcting Hadamard product orientation during array-to-matrix conversion.
-2. Allowing Hadamard products to use the existing matrix-expression derivative handler.
-
-The second fix addresses Item 15 of issue [#30902](https://github.com/sympy/sympy/issues/30902). Neither fix claims to resolve the entire issue.
-
-**Contributed by Team Nanosoft as part of Mach Zero Hackathon.**
+**Contributed by Team Nanosoft | Mach Zero Hackathon**
