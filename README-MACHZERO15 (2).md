@@ -84,12 +84,13 @@ The development testing recorded:
 - Edge cases, including non-square matrices and symbolic dimensions, were tested.
 - 1,092 existing tests across the tensor and matrix code passed.
 - Style and documentation checks passed.
-  1. Get the code and the branch:
+  
+1. **Get the code and the branch:**
 
-git clone --branch "15-hadamard-fallback(Maitreya)" 
-https://github.com/laksh-p-patil/sympy
-cd sympy
-pip install mpmath pytest
+   ```bash
+   git clone --branch "15-hadamard-fallback(Maitreya)" [https://github.com/laksh-p-patil/sympy](https://github.com/laksh-p-patil/sympy)
+   cd sympy
+   pip install mpmath pytest
 
 Keep the quotes around the branch name, because of the brackets. The fix, the tests and the demo are already on this branch.
 
