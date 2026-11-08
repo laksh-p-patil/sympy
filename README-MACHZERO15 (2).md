@@ -84,6 +84,34 @@ The development testing recorded:
 - Edge cases, including non-square matrices and symbolic dimensions, were tested.
 - 1,092 existing tests across the tensor and matrix code passed.
 - Style and documentation checks passed.
+  1. Get the code and the branch:
+
+git clone --branch "15-hadamard-fallback(Maitreya)" 
+https://github.com/laksh-p-patil/sympy
+cd sympy
+pip install mpmath pytest
+
+Keep the quotes around the branch name, because of the brackets. The fix, the tests and the demo are already on this branch.
+
+2. If Python later says it “could not determine its version”: GitHub forks don’t copy SymPy’s version tags. Run this once, then retry:
+
+git tag sympy-1.15.dev
+
+3. See the original error. This temporarily puts the original code back:
+
+git checkout 1e60306 -- sympy/tensor/array/expressions/arrayexpr_derivatives.py
+
+$env:PYTHONPATH="."
+python item15_submission/demo_item15.py
+
+4. Put the fix back:
+git checkout HEAD -- sympy/tensor/array/expressions/arrayexpr_derivatives.py
+5. See it working. Run the same demo command as step 3, then:
+
+python -m pytest -v sympy/tensor/array/expressions/tests/test_arrayexpr_derivatives.py -k hadamard
+6. Optional, for the full picture:
+
+python -m pytest -q sympy/tensor sympy/matrices/expressions
 
 ## Scope
 
