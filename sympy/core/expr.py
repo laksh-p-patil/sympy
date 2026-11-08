@@ -246,6 +246,14 @@ class Expr(Basic, EvalfMixin):
         from sympy.functions.elementary.complexes import Abs
         return Abs(self)
 
+    def __floor__(self) -> Expr:
+        from sympy.functions.elementary.integers import floor
+        return floor(self)
+
+    def __ceil__(self) -> Expr:
+        from sympy.functions.elementary.integers import ceiling
+        return ceiling(self)
+    
     @sympify_return([('other', 'Expr')], NotImplemented)
     @call_highest_priority('__radd__')
     def __add__(self, other: Expr | complex) -> Expr:

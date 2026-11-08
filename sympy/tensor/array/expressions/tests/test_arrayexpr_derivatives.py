@@ -5,6 +5,7 @@ from sympy import (exp, log, Matrix, Array, derive_by_array, ImmutableMatrix,
 from sympy.core.symbol import symbols
 from sympy.functions.elementary.trigonometric import (cos, sin)
 from sympy.matrices.expressions.diagonal import DiagMatrix, DiagonalMatrix
+from sympy.matrices.expressions.hadamard import HadamardProduct
 from sympy.matrices.expressions.matexpr import MatrixExpr, MatrixSymbol, MatrixElement
 from sympy.matrices.expressions.special import Identity, MatrixUnit
 from sympy.testing.pytest import raises
@@ -13,6 +14,7 @@ from sympy.tensor.array.expressions.array_expressions import ArraySymbol, ArrayT
     PermuteDims, ArrayDiagonal, ArrayElementwiseApplyFunc, ArrayContraction, _permute_dims, \
     Reshape, ZeroArray
 from sympy.tensor.array.expressions.arrayexpr_derivatives import array_derive
+from sympy.tensor.array.expressions.from_matrix_to_array import convert_matrix_to_array
 
 k = symbols("k")
 
@@ -298,3 +300,107 @@ def test_array_derive_scalar_sums():
     assert array_derive(M3[0, 0] + 2*M3[1, 2], M3).as_explicit() == \
         Matrix([[1, 0, 0], [0, 0, 2], [0, 0, 0]])
     assert (Trace(M3) + k).diff(M3) == Identity(3)
+
+
+def test_array_derive_hadamard_product_uses_matrixexpr_fallback():
+    # A ``HadamardProduct`` rule used to be registered that only raised
+    # ``NotImplementedError``.  Being more specific than the ``MatrixExpr``
+    # rule, it shadowed the fallback that converts the expression to an array
+    # expression, so ``array_derive`` failed on every raw ``HadamardProduct``
+    # (also when nested inside ``Determinant``, ``Inverse``, ``MatPow``...).
+    # Structural guard: the dispatcher must resolve to the generic rule.
+    assert array_derive.dispatch(HadamardProduct) is array_derive.dispatch(MatrixExpr)
+
+    M = MatrixSymbol("M", 3, 3)
+    N = MatrixSymbol("N", 3, 3)
+    H = HadamardProduct(M, N)
+    res = array_derive(H, M)
+    # Same result as differentiating the converted array expression:
+    assert res == array_derive(convert_matrix_to_array(H), M)
+    assert res.shape == (3, 3, 3, 3)
+    assert array_derive(H, N).shape == (3, 3, 3, 3)
+
+
+def test_array_derive_hadamard_product_numeric():
+    M = MatrixSymbol("M", 2, 2)
+    N = MatrixSymbol("N", 2, 2)
+    Mexp = ImmutableMatrix(2, 2, symbols("m:4"))
+    Nexp = ImmutableMatrix(2, 2, symbols("n:4"))
+    repl = {M: Mexp, N: Nexp}
+    H = HadamardProduct(M, N)
+    # derivative by either factor:
+    _check_numeric(H, M, repl)
+    _check_numeric(H, N, repl)
+    # the same matrix appearing more than once (product rule, both terms):
+    _check_numeric(HadamardProduct(M, M), M, repl)
+    _check_numeric(HadamardProduct(M, N, M), M, repl)
+    # nested Hadamard products:
+    _check_numeric(HadamardProduct(M, H), M, repl)
+    # combined with other matrix operations:
+    _check_numeric(H*M, M, repl)
+    _check_numeric(M*H, M, repl)
+    _check_numeric(H*H, M, repl)
+    _check_numeric(H + M, M, repl)
+    _check_numeric(Transpose(H), M, repl)
+    _check_numeric(Trace(H), M, repl)
+    _check_numeric(Trace(H*H.T), N, repl)
+
+
+def test_array_derive_hadamard_product_nested_in_rules():
+    # These went through ``array_derive(expr.arg, x)`` with a raw
+    # ``HadamardProduct`` argument and so raised before the fix.
+    M = MatrixSymbol("M", 2, 2)
+    N = MatrixSymbol("N", 2, 2)
+    Mexp = ImmutableMatrix(2, 2, symbols("m:4"))
+    Nexp = ImmutableMatrix(2, 2, symbols("n:4"))
+    repl = {M: Mexp, N: Nexp}
+    # entries chosen so that ``M o N`` is invertible:
+    numrepl = dict(zip(symbols("m:4") + symbols("n:4"), [3, 1, 2, 5, 2, 1, 1, 3]))
+    H = HadamardProduct(M, N)
+    _check_numeric(Determinant(H), M, repl, numrepl)
+    _check_numeric(Determinant(H), N, repl, numrepl)
+    _check_numeric(Inverse(H), M, repl, numrepl)
+    _check_numeric(Inverse(H), N, repl, numrepl)
+    _check_numeric(MatPow(H, 2), M, repl)
+    _check_numeric(MatPow(H, -2), M, repl, numrepl)
+
+
+def test_array_derive_hadamard_product_edge_cases():
+    # constant with respect to the variable: a zero array of the right shape
+    M = MatrixSymbol("M", 3, 3)
+    N = MatrixSymbol("N", 3, 3)
+    Z = MatrixSymbol("Z", 3, 3)
+    assert array_derive(HadamardProduct(M, N), Z) == ZeroArray(3, 3, 3, 3)
+    # non-square operands:
+    P = MatrixSymbol("P", 2, 3)
+    Q = MatrixSymbol("Q", 2, 3)
+    repl = {P: ImmutableMatrix(2, 3, symbols("p:6")),
+            Q: ImmutableMatrix(2, 3, symbols("q:6"))}
+    _check_numeric(HadamardProduct(P, Q), P, repl)
+    _check_numeric(HadamardProduct(P, Q), Q, repl)
+    # column vectors (size-1 axes):
+    v = MatrixSymbol("v", 3, 1)
+    w = MatrixSymbol("w", 3, 1)
+    repl = {v: ImmutableMatrix(3, 1, symbols("v:3")),
+            w: ImmutableMatrix(3, 1, symbols("w:3"))}
+    _check_numeric(HadamardProduct(v, w), v, repl)
+    assert array_derive(HadamardProduct(v, w), v).shape == (3, 1, 3, 1)
+    # row vectors:
+    r = MatrixSymbol("r", 1, 3)
+    s = MatrixSymbol("s", 1, 3)
+    repl = {r: ImmutableMatrix(1, 3, symbols("r:3")),
+            s: ImmutableMatrix(1, 3, symbols("s:3"))}
+    _check_numeric(HadamardProduct(r, s), r, repl)
+    # 1x1 matrices:
+    a = MatrixSymbol("a", 1, 1)
+    b = MatrixSymbol("b", 1, 1)
+    repl = {a: ImmutableMatrix(1, 1, [symbols("a0")]),
+            b: ImmutableMatrix(1, 1, [symbols("b0")])}
+    _check_numeric(HadamardProduct(a, b), a, repl)
+    # symbolic dimensions: the result keeps the symbolic shape
+    assert array_derive(HadamardProduct(X, A), X).shape == (k, k, k, k)
+    # an expression the fallback cannot convert still fails loudly instead of
+    # looping forever (the ``cg == expr`` guard of the ``MatrixExpr`` rule):
+    class Opaque(MatrixExpr):
+        shape = (2, 2)
+    raises(NotImplementedError, lambda: array_derive(Opaque(), MatrixSymbol("W", 2, 2)))

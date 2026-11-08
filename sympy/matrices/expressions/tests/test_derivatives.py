@@ -882,3 +882,29 @@ def test_derivative_object_routing():
     assert Derivative(Trace(A2*X2), X2).doit() == A2.T
     assert Derivative(Trace(X2*X2), X2, 2).doit() == \
         Trace(X2*X2).diff(X2).diff(X2)
+
+
+def test_derivative_of_hadamard_product_in_matrix_functions():
+    # ``HadamardProduct`` used to have an ``array_derive`` rule that only
+    # raised, shadowing the generic ``MatrixExpr`` fallback; derivatives of
+    # ``Determinant``/``Inverse``/``MatPow`` of a Hadamard product therefore
+    # failed with ``NotImplementedError``.
+    from sympy import ImmutableMatrix, derive_by_array
+    M2 = MatrixSymbol("M", 2, 2)
+    N2 = MatrixSymbol("N", 2, 2)
+    msyms = symbols("m:4")
+    nsyms = symbols("n:4")
+    Mexp = ImmutableMatrix(2, 2, msyms)
+    Nexp = ImmutableMatrix(2, 2, nsyms)
+    repl = {M2: Mexp, N2: Nexp}
+    # entries chosen so that the Hadamard product is invertible:
+    numrepl = dict(zip(msyms + nsyms, [3, 1, 2, 5, 2, 1, 1, 3]))
+    H = HadamardProduct(M2, N2)
+    for expr in (Determinant(H), Inverse(H), MatPow(H, 2), Trace(H*H)):
+        d = expr.diff(M2)
+        got = d.as_explicit() if hasattr(d, "as_explicit") else d
+        got = got.subs(repl).doit().subs(numrepl)
+        ground = expr.subs(repl).doit()
+        expected = derive_by_array(ground, Mexp).subs(numrepl)
+        assert (Array(got) - Array(expected)).applyfunc(
+            lambda t: t.doit().simplify()) == Array.zeros(*expected.shape), expr

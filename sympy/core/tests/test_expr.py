@@ -863,6 +863,23 @@ def test_trunc():
     raises(TypeError, lambda: math.trunc(oo))
 
 
+def test_floor_ceil():
+    import math
+    from sympy.functions.elementary.integers import floor, ceiling
+    x, y = symbols('x y')
+
+    assert math.floor(x) == floor(x)
+    assert math.ceil(x) == ceiling(x)
+    assert math.floor(x + y) == floor(x + y)
+    assert math.ceil(x + y) == ceiling(x + y)
+
+    assert math.floor(pi) == 3
+    assert math.ceil(pi) == 4
+    assert math.floor(Rational(7, 2)) == 3
+    assert math.ceil(Rational(7, 2)) == 4
+    assert math.floor(-Rational(7, 2)) == -4
+    assert math.ceil(-Rational(7, 2)) == -3
+
 class CustomAdd(Add):
     pass
 
